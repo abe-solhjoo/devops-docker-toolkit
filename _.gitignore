@@ -1,0 +1,15 @@
+# Real settings and secrets: never commit these
+.env
+.env.*
+!.env.example
+
+# TLS certificates and keys
+certs/
+*.pem
+*.key
+
+# Backups
+*.sql.gz
+
+# Editor / OS files
+.DS_Store

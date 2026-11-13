@@ -1,0 +1,75 @@
+# MySQL 8.4 LTS - Standalone (single instance: no replication, no HA)
+# Usage: cp .env.example .env  ->  edit .env  ->  docker compose up -d
+
+name: mysql-standalone
+
+services:
+  mysql:
+    image: mysql:${MYSQL_VERSION:?Set MYSQL_VERSION in .env}
+    container_name: ${CONTAINER_NAME:-mysql}
+    restart: unless-stopped
+
+    # MySQL may need time to flush InnoDB on shutdown. The default (10s)
+    # can be too short and risks a forced kill.
+    stop_grace_period: 60s
+
+    environment:
+      # Root password and optional app database/user are applied ONLY on the
+      # first start, when the data volume is empty. Changing them in .env
+      # later does NOT change an existing database.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-}
+      MYSQL_USER: ${MYSQL_USER:-}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      TZ: ${TZ:-UTC}
+
+    # Bound to localhost by default. Set MYSQL_BIND_ADDRESS=0.0.0.0 in .env
+    # only if remote clients need access (and restrict it with a firewall).
+    ports:
+      - "${MYSQL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Optional: extra server settings (*.cnf files). See README.
+      # - ./conf.d:/etc/mysql/conf.d:ro
+      # Optional: SQL/SH scripts run once on first start (empty data volume only).
+      # - ./initdb:/docker-entrypoint-initdb.d:ro
+      # Optional: your own TLS certificates (see the command block below).
+      # - ./certs:/etc/mysql/certs:ro
+
+    # Optional: server flags. These are passed to mysqld.
+    # Own TLS certificate instead of the auto-generated self-signed one.
+    # Also needs the ./certs volume above. See README.
+    # command:
+    #   - --ssl-ca=/etc/mysql/certs/ca.pem
+    #   - --ssl-cert=/etc/mysql/certs/server-cert.pem
+    #   - --ssl-key=/etc/mysql/certs/server-key.pem
+    #   # Reject non-TLS connections (uncomment only after TLS works):
+    #   # - --require-secure-transport=ON
+    #   # Needed only by legacy clients that cannot use caching_sha2_password
+    #   # (mysql_native_password is disabled by default in 8.4):
+    #   # - --mysql-native-password=ON
+
+    # Optional: memory limit. If you set it, also set innodb_buffer_pool_size
+    # (roughly 50-70% of the limit) via conf.d. See README.
+    # mem_limit: 2g
+
+    healthcheck:
+      # 127.0.0.1 (TCP) is used on purpose: during first-time initialisation the
+      # temporary server only listens on a socket, so this reports healthy
+      # only when the real server is up.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+    # Docker keeps logs forever by default. This caps them.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  mysql_data:
